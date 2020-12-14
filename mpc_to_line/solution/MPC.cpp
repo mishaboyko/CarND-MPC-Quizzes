@@ -58,21 +58,32 @@ class FG_eval {
 
     // The part of the cost based on the reference state.
     for (int t = 0; t < N; ++t) {
+      // Sum three components to reach the aggregate cost:
+      //cross-track error
       fg[0] += CppAD::pow(vars[cte_start + t], 2);
+      // heading error
       fg[0] += CppAD::pow(vars[epsi_start + t], 2);
+      // velocity error
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
     // Minimize the use of actuators.
+    /**
+     *  Enhancement to constrain erratic control inputs.
+     *  If we're making a turn, we'd like the turn to be smooth, not sharp.
+     *  The vehicle velocity should not change too radically.
+     */
     for (int t = 0; t < N - 1; ++t) {
       fg[0] += CppAD::pow(vars[delta_start + t], 2);
       fg[0] += CppAD::pow(vars[a_start + t], 2);
     }
 
     // Minimize the value gap between sequential actuations.
+    // This makes control decisions more consistent, or smoother.
     for (int t = 0; t < N - 2; ++t) {
-      fg[0] += CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
       fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+      // Multiplying that part by a value > 1 (e.g. 500, 100) will influence the solver into keeping sequential steering values closer together.
+      fg[0] += 500 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
     }
 
     //
@@ -123,7 +134,11 @@ class FG_eval {
       // Recall the equations for the model:
       // x_[t+1] = x[t] + v[t] * cos(psi[t]) * dt
       // y_[t+1] = y[t] + v[t] * sin(psi[t]) * dt
-      // psi_[t+1] = psi[t] + v[t] / Lf * delta[t] * dt
+      /*
+       * psi_[t+1] = psi[t] + v[t] / Lf * delta[t] * dt
+       * Note if \large \deltaδ is positive we rotate counter-clockwise, or turn left.
+       * In the simulator however, a positive value implies a right turn and a negative value implies a left turn.
+       */
       // v_[t+1] = v[t] + a[t] * dt
       // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
